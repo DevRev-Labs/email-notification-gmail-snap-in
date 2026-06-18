@@ -19,6 +19,25 @@ developer_keyrings:
     display_name: Gmail OAuth Secret
 
 keyring_types:
+  - id: gmail-oauth-mail
+    name: "Gmail OAuth (send mail)"
+    description: "Google OAuth client and refresh token for sending mail via Gmail API."
+    kind: secret
+    secret_config:
+      fields:
+        - id: client_id
+          name: Client ID
+          description: OAuth 2.0 Client ID
+        - id: client_secret
+          name: Client Secret
+          description: OAuth 2.0 Client Secret
+        - id: redirect_uri
+          name: Redirect URI
+          description: OAuth redirect URI (e.g. urn:ietf:wg:oauth:2.0:oob for desktop-style flows)
+        - id: refresh_token
+          name: Refresh Token
+          description: OAuth refresh token for the sending Google account
+
   - id: gmail-oauth
     name: Gmail Connection
     description: Gmail OAuth2 Connection
@@ -86,6 +105,7 @@ operations:
         description: Google OAuth2 credentials for Gmail API access, handled via keyring.
         types:
           - gmail-oauth
+          - gmail-oauth-mail
     inputs:
       fields:
         - name: to
