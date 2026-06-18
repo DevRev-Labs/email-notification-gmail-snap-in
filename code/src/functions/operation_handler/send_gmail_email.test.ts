@@ -2,7 +2,7 @@ import { FunctionInput, OperationOutput } from '@devrev/typescript-sdk/dist/snap
 
 import { resolveArtifactAttachments } from '../../devrev/devrev-artifacts';
 import { sendGmailMessage } from '../../gmail/gmail-mail-client';
-import { resolveGmailOAuthKeyringSecret, SendGmailEmailOp } from './send_gmail_email';
+import { SendGmailEmailOp } from './send_gmail_email';
 
 jest.mock('../../gmail/gmail-mail-client', () => ({
   sendGmailMessage: jest.fn().mockResolvedValue({ messageId: 'mock-msg-id' }),
@@ -15,13 +15,9 @@ jest.mock('../../devrev/devrev-artifacts', () => ({
 const mockedSendGmail = sendGmailMessage as jest.MockedFunction<typeof sendGmailMessage>;
 const mockedResolveArtifacts = resolveArtifactAttachments as jest.MockedFunction<typeof resolveArtifactAttachments>;
 
+const TEST_ACCESS_TOKEN = 'ya29.test-access-token';
+
 function baseEvent(overrides: Partial<FunctionInput> = {}): FunctionInput {
-  const secretJson = JSON.stringify({
-    client_id: 'cid',
-    client_secret: 'csec',
-    redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
-    refresh_token: 'rtok',
-  });
   return {
     context: {
       automation_id: '',
@@ -40,8 +36,8 @@ function baseEvent(overrides: Partial<FunctionInput> = {}): FunctionInput {
         keyrings: {
           gmail_oauth: {
             id: 'k1',
-            secret: secretJson,
-            type_id: 'gmail-oauth-mail',
+            secret: TEST_ACCESS_TOKEN,
+            type_id: 'gmail-oauth',
           },
         },
       },
@@ -73,7 +69,7 @@ describe('SendGmailEmailOp', () => {
       output?: { values?: Array<{ success: boolean; error_message?: string }> };
     };
     expect(j.output?.values?.[0]?.success).toBe(false);
-    expect(j.output?.values?.[0]?.error_message).toMatch(/keyring|Gmail OAuth/i);
+    expect(j.output?.values?.[0]?.error_message).toMatch(/connection|Gmail OAuth/i);
     expect(mockedSendGmail).not.toHaveBeenCalled();
   });
 
@@ -170,37 +166,13 @@ describe('SendGmailEmailOp', () => {
     expect(mockedResolveArtifacts).toHaveBeenCalledWith(expect.anything(), ['[not-json]'], expect.anything());
   });
 
-  it('resolves keyring from input_data.keyrings when resources.keyrings is empty', async () => {
-    const secretJson = JSON.stringify({
-      client_id: 'id',
-      client_secret: 'sec',
-      redirect_uri: 'urn:x',
-      refresh_token: 'rt',
-    });
-    const ev = baseEvent({
-      input_data: {
-        event_sources: {},
-        global_values: {},
-        keyrings: {
-          gmail_oauth: {
-            id: 'k-top',
-            secret: secretJson,
-            type_id: 'gmail-oauth-mail',
-          },
-        },
-        resources: { keyrings: {} },
-      },
-    } as Partial<FunctionInput>);
-
-    expect(resolveGmailOAuthKeyringSecret(ev)).toBe(secretJson);
-
+  it('passes the keyring secret as the access token to sendGmailMessage', async () => {
+    const ev = baseEvent();
     const op = new SendGmailEmailOp(ev);
-    const out = await op.run(op.GetContext(), {
-      data: { body: '<p>x</p>', subject: 'S', to: 'a@b.com' },
+    await op.run(op.GetContext(), {
+      data: { body: 'B', subject: 'S', to: 'a@b.com' },
       metadata: { namespace: 'devrev', slug: 'send_gmail_email' },
     } as never);
-
-    const j = OperationOutput.toJSON(out) as { output?: { values?: Array<{ success: boolean }> } };
-    expect(j.output?.values?.[0]?.success).toBe(true);
+    expect(mockedSendGmail).toHaveBeenCalledWith(TEST_ACCESS_TOKEN, expect.anything(), expect.anything());
   });
 });
