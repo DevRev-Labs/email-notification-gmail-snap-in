@@ -105,8 +105,7 @@ async function refreshAccessToken(credentials: GmailOAuthCredentials, logger: Gm
   });
 
   if (tokenRes.status < 200 || tokenRes.status >= 300) {
-    const detail = typeof tokenRes.data === 'string' ? tokenRes.data : JSON.stringify(tokenRes.data);
-    logger.error('OAuth token refresh failed:', tokenRes.status, detail);
+    logger.error('OAuth token refresh failed: HTTP', tokenRes.status);
     throw new Error(`OAuth token refresh failed with HTTP ${tokenRes.status}.`);
   }
 
@@ -116,7 +115,11 @@ async function refreshAccessToken(credentials: GmailOAuthCredentials, logger: Gm
       : '';
 
   if (!accessToken) {
-    logger.error('OAuth token refresh did not return access_token:', tokenRes.data);
+    const responseShape =
+      tokenRes.data && typeof tokenRes.data === 'object'
+        ? Object.keys(tokenRes.data as Record<string, unknown>)
+        : typeof tokenRes.data;
+    logger.error('OAuth token refresh did not return access_token; response keys:', responseShape);
     throw new Error('OAuth token refresh failed (missing access_token).');
   }
 
