@@ -13,6 +13,8 @@ service_account:
         optional: false
         reason: Read DevRev artifacts to attach files to Gmail emails sent via the snap-in.
 
+# Workflow operations must declare keyrings under operations[].keyrings.
+
 developer_keyrings:
   - name: gmail-oauth-secret
     description: Google OAuth client secret
@@ -37,8 +39,7 @@ keyring_types:
         - id: refresh_token
           name: Refresh Token
           description: OAuth refresh token for the sending Google account
-
-  - id: gmail-oauth
+  - id: gmail-auto-oauth
     name: Gmail Connection
     description: Gmail OAuth2 Connection
     kind: oauth2
@@ -102,9 +103,9 @@ operations:
     keyrings:
       - name: gmail_oauth
         display_name: Gmail OAuth
-        description: Google OAuth2 credentials for Gmail API access, handled via keyring.
+        description: Google OAuth client ID, secret, redirect URI, and refresh token for Gmail API.
         types:
-          - gmail-oauth
+          - gmail-auto-oauth
           - gmail-oauth-mail
     inputs:
       fields:

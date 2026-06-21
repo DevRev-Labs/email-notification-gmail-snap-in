@@ -18,11 +18,17 @@ import {
   recipientLinesToValidatedAddresses,
   splitRecipientList,
 } from '../../gmail/email-recipients';
+import { resolveGmailOAuthKeyringSecret, secretFromKeyringsMap } from '../../gmail/gmail-keyring';
 import { sendGmailMessage } from '../../gmail/gmail-mail-client';
+import { parseGmailOAuthKeyringSecretJson } from '../../gmail/gmail-oauth-credentials';
+import { logKeyringDiagnostics } from '../../gmail/keyring-debug-logs';
+import { fetchSnapInResources } from '../../gmail/snap-in-resources-client';
 import { createGmailLogger } from '../../lib/gmail-logger';
 import { LabsUsageTracker } from '../../lib/labs_usage';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const packageJson = require('../../../package.json');
+
+export { resolveGmailOAuthKeyringSecret } from '../../gmail/gmail-keyring';
 
 export class SendGmailEmailOp extends OperationBase {
   private readonly snapEvent: FunctionInput;
@@ -73,6 +79,23 @@ export class SendGmailEmailOp extends OperationBase {
     return normalized === 'plain' ? 'plain' : 'html';
   }
 
+  /**
+   * Resolves the Gmail OAuth keyring secret from the event itself and (as fallback) from the
+   * Snap-in resources API.
+   */
+  private async resolveKeyringSecretJson(): Promise<string | undefined> {
+    let keyringSecretJson = resolveGmailOAuthKeyringSecret(this.snapEvent, this.logger);
+    if (keyringSecretJson) {
+      return keyringSecretJson;
+    }
+
+    const snap = await fetchSnapInResources(this.snapEvent, this.logger);
+    if (snap?.keyrings && Object.keys(snap.keyrings).length > 0) {
+      keyringSecretJson = secretFromKeyringsMap(snap.keyrings);
+    }
+    return keyringSecretJson;
+  }
+
   private parseRecipientsOrFail(
     params: Record<string, unknown>
   ): { ok: true; to: string[]; cc: string[]; bcc: string[] } | { ok: false; error: string } {
@@ -101,6 +124,8 @@ export class SendGmailEmailOp extends OperationBase {
     const bodyFormat = this.resolveBodyFormat(params['body_format']);
 
     try {
+      logKeyringDiagnostics(this.snapEvent, this.logger);
+
       const toLineRequired = this.requireNonEmptyText('To', params['to']);
       if (typeof toLineRequired !== 'string') return this.fail(toLineRequired.error);
 
@@ -121,10 +146,18 @@ export class SendGmailEmailOp extends OperationBase {
         return this.fail('One or more To addresses are invalid.');
       }
 
-      const accessToken = this.snapEvent.input_data?.resources?.['keyrings']?.gmail_oauth?.secret as string | undefined;
-      if (!accessToken) {
-        return this.fail('Gmail OAuth connection is not configured. Connect a Gmail account in snap-in settings.');
+      const keyringSecretJson = await this.resolveKeyringSecretJson();
+      if (!keyringSecretJson) {
+        return this.fail(
+          'Gmail OAuth keyring is not configured. Add Client ID, Secret, Redirect URI, and Refresh Token in snap-in settings.'
+        );
       }
+
+      const parsed = parseGmailOAuthKeyringSecretJson(keyringSecretJson);
+      if ('errorMessage' in parsed) {
+        return this.fail(parsed.errorMessage);
+      }
+      const auth = 'credentials' in parsed ? parsed.credentials : { accessToken: parsed.accessToken };
 
       const recipients = this.parseRecipientsOrFail(params);
       if (!recipients.ok) return this.fail(recipients.error);
@@ -142,7 +175,7 @@ export class SendGmailEmailOp extends OperationBase {
       }
 
       await sendGmailMessage(
-        accessToken,
+        auth,
         {
           attachments,
           bccAddresses: recipients.bcc,
@@ -196,18 +229,20 @@ export class SendGmailEmailOp extends OperationBase {
    *
    * @param options - Usage event options
    */
-  private async trackUsageEvent(options: {
-    eventType: string;
-    operation: string;
-    status: 'success' | 'failure';
-    attachmentCount?: number;
-    bccCount?: number;
-    bodyFormat?: string;
-    ccCount?: number;
-    errorType?: string;
-    hasSubject?: boolean;
-    toCount?: number;
-  }): Promise<void> {
+  private async trackUsageEvent(
+    options: {
+      eventType: string;
+      operation: string;
+      status: 'success' | 'failure';
+      attachmentCount?: number;
+      bccCount?: number;
+      bodyFormat?: string;
+      ccCount?: number;
+      errorType?: string;
+      hasSubject?: boolean;
+      toCount?: number;
+    }
+  ): Promise<void> {
     try {
       this.logger.info('[LabsUsageTracker] Step 1: Initializing usage tracker...');
 
@@ -261,7 +296,9 @@ export class SendGmailEmailOp extends OperationBase {
     } catch (error) {
       // Catch any unexpected errors to ensure usage tracking never interrupts the main flow
       this.logger.info('[LabsUsageTracker] ✗ Usage tracking encountered an error (non-blocking)');
-      this.logger.info(`[LabsUsageTracker] Error details: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.info(
+        `[LabsUsageTracker] Error details: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }
