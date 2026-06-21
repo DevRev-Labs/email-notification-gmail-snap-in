@@ -36,16 +36,7 @@ export function logKeyringDiagnostics(event: FunctionInput, logger: GmailSnapInL
   const gmailSlot = keyrings?.['gmail_oauth'] as Record<string, unknown> | undefined;
   logger.debug('keyrings.gmail_oauth exists:', !!gmailSlot);
   if (gmailSlot) {
-    logger.debug('keyrings.gmail_oauth keys:', Object.keys(gmailSlot));
-    const secretField = gmailSlot['secret'];
-    logger.debug(
-      'keyrings.gmail_oauth.secret: type=',
-      typeof secretField,
-      'length=',
-      typeof secretField === 'string' ? secretField.length : 'n/a',
-      'truthy=',
-      !!secretField
-    );
+    logger.debug('keyrings.gmail_oauth has secret field:', 'secret' in gmailSlot);
   }
 
   if (keyrings) {

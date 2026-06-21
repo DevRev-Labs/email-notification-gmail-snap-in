@@ -8,6 +8,27 @@ import { resolveLogLevel, shouldEmitLogLevel } from '../config/log-level';
 
 const DEFAULT_NAMESPACE = '[gmail-email]';
 
+const SENSITIVE_KEY_PATTERN =
+  /(secret|password|token|authorization|refresh_token|access_token|client_secret|api[_-]?key|keyring)/i;
+const REDACTED = '[REDACTED]';
+
+function redact(value: unknown, depth = 0): unknown {
+  if (depth > 4 || value === null || value === undefined) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redact(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = SENSITIVE_KEY_PATTERN.test(key) ? REDACTED : redact(raw, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 export class GmailSnapInLogger {
   public constructor(private readonly namespace: string) {}
 
@@ -32,7 +53,8 @@ export class GmailSnapInLogger {
     if (!shouldEmitLogLevel(minimum, level)) {
       return;
     }
-    sink(this.namespace, ...payload);
+    const safe = payload.map((arg) => redact(arg));
+    sink(this.namespace, ...safe);
   }
 }
 
