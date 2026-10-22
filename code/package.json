@@ -56,7 +56,8 @@
   "dependencies": {
     "@babel/runtime": "7.29.2",
     "@devrev/typescript-sdk": "^1.1.71",
-    "axios": "1.20.0"
+    "axios": "1.20.0",
+    "follow-redirects": "1.16.1"
   },
   "overrides": {
     "protobufjs": ">=7.6.5",
